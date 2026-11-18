@@ -1,0 +1,7 @@
+base   fmtable
+author Benoit
+email  benoit.thibaudeau64@gmail.com
+date   2026-11-18
+name   Fmtable (tableaux de fiches filtrables)
+desc   Tableau de fiches à la Dataview (TABLE / FROM / WHERE / SORT) construit depuis les en-têtes, avec recherche, filtres par caractéristique et tri en direct.
+url    https://www.dokuwiki.org/plugins

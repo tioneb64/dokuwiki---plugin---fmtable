@@ -1,0 +1,53 @@
+/* Fmtable : tableau de fiches filtrable */
+
+.plugin_fmtable .fmt-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: .5em 1em;
+    margin: 0 0 .8em;
+    padding: .6em .8em;
+    border: 1px solid __border__;
+    border-radius: 6px;
+    background: __background_alt__;
+}
+.plugin_fmtable .fmt-filter { display: flex; flex-wrap: wrap; align-items: center; gap: .3em; font-size: .9em; }
+.plugin_fmtable .fmt-label { font-weight: 700; color: __text_neu__; }
+.plugin_fmtable .fmt-filter.fmt-on .fmt-label { color: __link__; }
+.plugin_fmtable .fmt-search { min-width: 14em; }
+.plugin_fmtable select.fmt-select { max-width: 14em; }
+.plugin_fmtable .fmt-active { display: inline-flex; flex-wrap: wrap; gap: .25em; }
+.plugin_fmtable .fmt-pill {
+    display: inline-block;
+    padding: 0 .55em;
+    border-radius: 1em;
+    background: __link__;
+    color: #fff;
+    font-size: .9em;
+    white-space: nowrap;
+}
+.plugin_fmtable .fmt-pill a.fmt-x { color: #fff; text-decoration: none; margin-left: .2em; }
+.plugin_fmtable .fmt-count { color: __text_neu__; font-size: .85em; margin: .4em 0 0; }
+
+.plugin_fmtable table.fmt-table th { white-space: nowrap; user-select: none; }
+.plugin_fmtable table.fmt-table th.fmt-asc::after { content: " \25B2"; font-size: .7em; }
+.plugin_fmtable table.fmt-table th.fmt-desc::after { content: " \25BC"; font-size: .7em; }
+.plugin_fmtable table.fmt-table td { vertical-align: top; }
+
+.plugin_fmtable .fmt-chip {
+    display: inline-block;
+    padding: 0 .55em;
+    margin: .05em .1em .05em 0;
+    border: 1px solid __border__;
+    border-radius: 1em;
+    background: #fff;
+    font-size: .88em;
+    white-space: nowrap;
+}
+.plugin_fmtable .fmt-chip[data-k], .plugin_fmtable .fmt-bool[data-k] { cursor: pointer; }
+.plugin_fmtable .fmt-chip[data-k]:hover { background: __link__; color: #fff; border-color: __link__; }
+.plugin_fmtable .fmt-bool { font-weight: 700; }
+.plugin_fmtable .fmt-true { color: #2e7d32; }
+.plugin_fmtable .fmt-false { color: #b3261e; }
+
+.plugin_fmtable .fmt-scroll { overflow-x: auto; }
