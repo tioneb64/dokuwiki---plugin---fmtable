@@ -199,3 +199,79 @@ jQuery(function () {
         apply();
     });
 });
+
+/**
+ * Fmtable CALENDAR : calendrier mensuel dessiné à partir de data-events ({"AAAA-MM-JJ": [{t: titre, u: adresse}]}).
+ * Les semaines commencent le lundi ; les noms de mois et de jours suivent la langue de la page.
+ */
+jQuery(function () {
+    'use strict';
+
+    var L = (window.LANG && LANG.plugins && LANG.plugins.fmtable) || {};
+    function t(key, dflt) { return L[key] || dflt; }
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+
+    jQuery('.plugin_fmcal').each(function () {
+        var $box = jQuery(this);
+        var events = {};
+        try { events = JSON.parse($box.attr('data-events') || '{}'); } catch (e) { events = {}; }
+        var lang = document.documentElement.lang || 'fr';
+        var now = new Date();
+        var year = now.getFullYear(), month = now.getMonth();
+        var todayKey = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+
+        function fmt(date, opts) {
+            try { return date.toLocaleDateString(lang, opts); } catch (e) { return date.toLocaleDateString(undefined, opts); }
+        }
+
+        $box.find('.fmcal-fallback').hide();
+        var $nav = jQuery('<div class="fmcal-nav"></div>');
+        var $prev = jQuery('<button type="button" class="button fmcal-prev">‹</button>').attr('title', t('prev', 'Mois précédent'));
+        var $next = jQuery('<button type="button" class="button fmcal-next">›</button>').attr('title', t('next', 'Mois suivant'));
+        var $today = jQuery('<button type="button" class="button fmcal-today"></button>').text(t('today', "Aujourd'hui"));
+        var $title = jQuery('<span class="fmcal-title"></span>');
+        $nav.append($prev, $title, $next, $today);
+        var $grid = jQuery('<table class="inline fmcal-grid"></table>');
+        $box.append($nav, $grid);
+
+        function draw() {
+            var first = new Date(year, month, 1);
+            var offset = (first.getDay() + 6) % 7;
+            var days = new Date(year, month + 1, 0).getDate();
+            $title.text(fmt(first, {month: 'long', year: 'numeric'}));
+
+            var $head = jQuery('<tr></tr>');
+            for (var i = 0; i < 7; i++) {
+                // 1er janvier 2024 : un lundi
+                $head.append(jQuery('<th></th>').text(fmt(new Date(2024, 0, 1 + i), {weekday: 'short'})));
+            }
+            var $body = jQuery('<tbody></tbody>');
+            var $row = null;
+            var total = Math.ceil((offset + days) / 7) * 7;
+            for (var cell = 0; cell < total; cell++) {
+                if (cell % 7 === 0) { $row = jQuery('<tr></tr>'); $body.append($row); }
+                var d = cell - offset + 1;
+                var $td = jQuery('<td></td>');
+                if (d >= 1 && d <= days) {
+                    var key = year + '-' + pad(month + 1) + '-' + pad(d);
+                    $td.append(jQuery('<div class="fmcal-day"></div>').text(d));
+                    var list = events[key] || [];
+                    list.forEach(function (ev) {
+                        $td.append(jQuery('<a class="fmcal-ev"></a>').attr({href: ev.u, title: ev.t}).text(ev.t));
+                    });
+                    if (list.length) $td.addClass('fmcal-has');
+                    if (key === todayKey) $td.addClass('fmcal-today-cell');
+                } else {
+                    $td.addClass('fmcal-out');
+                }
+                $row.append($td);
+            }
+            $grid.empty().append(jQuery('<thead></thead>').append($head), $body);
+        }
+
+        $prev.on('click', function () { month--; if (month < 0) { month = 11; year--; } draw(); });
+        $next.on('click', function () { month++; if (month > 11) { month = 0; year++; } draw(); });
+        $today.on('click', function () { year = now.getFullYear(); month = now.getMonth(); draw(); });
+        draw();
+    });
+});

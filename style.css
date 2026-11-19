@@ -51,3 +51,28 @@
 .plugin_fmtable .fmt-false { color: #b3261e; }
 
 .plugin_fmtable .fmt-scroll { overflow-x: auto; }
+
+/* tableaux regroupés et listes de tâches (non filtrables en direct) */
+.plugin_fmtable_static .fmt-scroll { overflow-x: auto; }
+.plugin_fmtable_static table.fmt-table td { vertical-align: top; }
+.plugin_fmtable_static .fmt-count { color: __text_neu__; font-size: .85em; margin: .4em 0 0; }
+.plugin_fmtable_static ul.fmt-taskgroups, .plugin_fmtable_static ul.fmt-tasks { list-style: none; margin-left: 0; padding-left: 0; }
+.plugin_fmtable_static ul.fmt-tasks { margin: .2em 0 .8em 1.2em; }
+.plugin_fmtable_static .fmt-gkey { font-weight: 700; }
+.plugin_fmtable_static li.fmt-task { margin: .15em 0; }
+.plugin_fmtable_static .fmt-tpage { font-size: .85em; opacity: .75; }
+.plugin_fmtable_static .tl-box.fmt-tbox { cursor: default; }
+.plugin_fmtable_list ul { margin-top: .1em; }
+
+/* CALENDAR */
+.plugin_fmcal .fmcal-nav { display: flex; align-items: center; gap: .5em; margin-bottom: .4em; }
+.plugin_fmcal .fmcal-title { font-weight: 700; min-width: 11em; text-align: center; text-transform: capitalize; }
+.plugin_fmcal table.fmcal-grid { width: 100%; table-layout: fixed; }
+.plugin_fmcal table.fmcal-grid th { text-align: center; text-transform: capitalize; }
+.plugin_fmcal table.fmcal-grid td { height: 5.2em; vertical-align: top; padding: .15em .3em; overflow: hidden; }
+.plugin_fmcal .fmcal-out { background: __background_alt__; }
+.plugin_fmcal .fmcal-day { font-size: .8em; color: __text_neu__; }
+.plugin_fmcal .fmcal-today-cell .fmcal-day { color: __link__; font-weight: 700; }
+.plugin_fmcal .fmcal-today-cell { outline: 2px solid __link__; outline-offset: -2px; }
+.plugin_fmcal .fmcal-ev { display: block; font-size: .78em; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plugin_fmcal .fmcal-fallback { margin: 0; }

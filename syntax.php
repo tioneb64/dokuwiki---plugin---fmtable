@@ -52,6 +52,10 @@ class syntax_plugin_fmtable extends SyntaxPlugin
     public function render($format, Doku_Renderer $renderer, $data)
     {
         if ($format !== 'xhtml' || !is_string($data)) return false;
+        if (!plugin_load('helper', 'fmeta')) {
+            $renderer->doc .= '<div class="error">' . hsc(sprintf($this->getLang('need_fmeta'), 'fmtable')) . '</div>';
+            return true;
+        }
         $renderer->nocache();      // dépend de l'index des fiches et des droits de lecture
         $renderer->doc .= $this->html($data);
         return true;
@@ -67,7 +71,14 @@ class syntax_plugin_fmtable extends SyntaxPlugin
         $fm = $this->loadHelper('fmeta');
 
         $q = $h->parse($text);
+        if ($q['mode'] === 'TASK') return $this->taskHtml($h, $q, $h->runTasks($q));
+        if ($q['mode'] === 'CALENDAR') return $this->calendarHtml($h, $q, $h->run($q));
+
         $rows = $h->run($q);
+        if ($q['group'] !== null) {
+            $groups = $h->groups($rows, $q);
+            return $q['mode'] === 'LIST' ? $this->groupListHtml($h, $q, $groups) : $this->groupTableHtml($h, $q, $groups);
+        }
 
         if ($q['mode'] === 'LIST') return $this->listHtml($h, $q, $rows);
 
@@ -118,7 +129,7 @@ class syntax_plugin_fmtable extends SyntaxPlugin
                     . hsc($e['title']) . '</a></td>';
             }
             foreach ($cols as $c) {
-                $raw = $h->value($e, $c['key']);
+                $raw = $h->columnValue($e, $c['key']);
                 $out .= '<td data-s="' . hsc($this->sortKey($raw)) . '">'
                     . $this->cell($fm, $e, $c['key'], $raw, in_array($c['key'], $fkeys, true)) . '</td>';
             }
@@ -136,12 +147,185 @@ class syntax_plugin_fmtable extends SyntaxPlugin
         foreach ($rows as $e) {
             $extra = '';
             if ($q['listexpr'] !== '') {
-                $v = $h->value($e, $q['listexpr']);
-                if ($v !== null && $v !== []) $extra = ' : ' . hsc(is_array($v) ? implode(', ', $v) : (string)$v);
+                $v = $this->free($h->columnValue($e, $q['listexpr']));
+                if ($v !== '') $extra = ' : ' . $v;
             }
             $out .= '<li><a href="' . hsc(wl($e['id'])) . '">' . hsc($e['title']) . '</a>' . $extra . '</li>';
         }
         return $out . '</ul>';
+    }
+
+    // ---- regroupement (GROUP BY) -------------------------------------------------------------------
+
+    /** Tableau d'un TABLE ... GROUP BY : une ligne par groupe, colonnes évaluées sur « rows » */
+    protected function groupTableHtml(helper_plugin_fmtable $h, array $q, array $groups): string
+    {
+        if (!$groups) return '<p>' . hsc($this->getLang('none')) . '</p>';
+        $cols = $q['cols'] ?: [['key' => 'rows.file.link', 'label' => $this->getLang('col_file')]];
+        $gname = $q['group']['name'] !== '' ? $q['group']['name'] : $this->getLang('col_group');
+
+        $out = '<div class="plugin_fmtable_static"><div class="fmt-scroll"><table class="inline fmt-table"><thead><tr>';
+        if (!$q['noid']) $out .= '<th>' . hsc($gname) . '</th>';
+        foreach ($cols as $c) $out .= '<th>' . hsc($c['label']) . '</th>';
+        $out .= '</tr></thead><tbody>';
+        foreach ($groups as $g) {
+            $out .= '<tr>';
+            if (!$q['noid']) $out .= '<td>' . $this->groupKey($g) . '</td>';
+            foreach ($cols as $c) $out .= '<td>' . $this->free($h->groupExpr($g, $c['key'])) . '</td>';
+            $out .= '</tr>';
+        }
+        $out .= '</tbody></table></div><p class="fmt-count">' . sprintf($this->getLang('groups_count'), count($groups)) . '</p></div>';
+        return $out;
+    }
+
+    /** LIST ... GROUP BY : les groupes, avec leurs pages (ou « LIST expression » évaluée sur le groupe) */
+    protected function groupListHtml(helper_plugin_fmtable $h, array $q, array $groups): string
+    {
+        if (!$groups) return '<p>' . hsc($this->getLang('none')) . '</p>';
+        $out = '<ul class="plugin_fmtable_list">';
+        foreach ($groups as $g) {
+            $out .= '<li><strong>' . $this->groupKey($g) . '</strong>';
+            if ($q['listexpr'] !== '') {
+                $v = $this->free($h->groupExpr($g, $q['listexpr']));
+                if ($v !== '') $out .= ' : ' . $v;
+            } else {
+                $out .= '<ul>';
+                foreach ($g['rows'] as $e) {
+                    $out .= '<li><a href="' . hsc(wl($e['id'])) . '">' . hsc($e['title']) . '</a></li>';
+                }
+                $out .= '</ul>';
+            }
+            $out .= '</li>';
+        }
+        return $out . '</ul>';
+    }
+
+    protected function groupKey(array $g): string
+    {
+        $k = $this->free($g['key']);
+        return $k === '' ? '<em>' . hsc($this->getLang('null_group')) . '</em>' : $k;
+    }
+
+    // ---- calendrier (CALENDAR) ------------------------------------------------------------------------
+
+    /**
+     * Calendrier mensuel : les pages sont placées à la date du champ donné. Le mois se dessine en JavaScript
+     * (script.js) à partir de data-events ; sans JavaScript, la liste des dates reste visible.
+     */
+    protected function calendarHtml(helper_plugin_fmtable $h, array $q, array $rows): string
+    {
+        $events = $h->calendarEvents($rows, $q['calfield']);
+        $out = '<div class="plugin_fmcal" data-events="' . hsc(json_encode((object)$events, JSON_UNESCAPED_UNICODE)) . '">';
+        $out .= '<ul class="fmcal-fallback">';
+        foreach ($events as $day => $list) {
+            $links = [];
+            foreach ($list as $ev) $links[] = '<a href="' . hsc($ev['u']) . '">' . hsc($ev['t']) . '</a>';
+            $out .= '<li><strong>' . hsc($day) . '</strong> : ' . implode(', ', $links) . '</li>';
+        }
+        if (!$events) $out .= '<li>' . hsc($this->getLang('none')) . '</li>';
+        return $out . '</ul></div>';
+    }
+
+    // ---- tâches (TASK) ---------------------------------------------------------------------------------
+
+    /** TASK : les tâches, regroupées par page (ou selon GROUP BY) */
+    protected function taskHtml(helper_plugin_fmtable $h, array $q, array $rows): string
+    {
+        if (!$rows) return '<p>' . hsc($this->getLang('none_tasks')) . '</p>';
+
+        $byPage = $q['group'] === null || strtolower($q['group']['expr']) === 'file.link';
+        if ($byPage) {
+            $q['group'] = ['expr' => 'file.link', 'name' => ''];
+        }
+        $groups = $h->groups($rows, $q);
+
+        $out = '<div class="plugin_fmtable_static"><ul class="fmt-taskgroups">';
+        foreach ($groups as $g) {
+            $out .= '<li class="fmt-taskgroup"><span class="fmt-gkey">' . $this->groupKey($g) . '</span><ul class="fmt-tasks">';
+            foreach ($g['rows'] as $e) {
+                $t = $e['__task'];
+                $out .= '<li class="fmt-task">' . $this->taskBox($t['status']) . ' <span class="fmt-ttext">'
+                    . $this->inline($t['text']) . '</span>';
+                if (!$byPage) {
+                    $out .= ' <a class="fmt-tpage" href="' . hsc(wl($e['id'])) . '">' . hsc($e['title']) . '</a>';
+                }
+                $out .= '</li>';
+            }
+            $out .= '</ul></li>';
+        }
+        return $out . '</ul><p class="fmt-count">' . sprintf($this->getLang('tasks_count'), count($rows)) . '</p></div>';
+    }
+
+    /** Statuts de tâche du plugin tasklist (classe, symbole, libellé), pour une présentation identique */
+    protected function taskStates(): array
+    {
+        static $states = null;
+        if ($states === null) {
+            $states = [' ' => ['todo', '', ''], 'x' => ['done', '✓', ''], '/' => ['half', '◐', ''], '-' => ['cancel', '–', '']];
+            try {
+                if (plugin_load('action', 'tasklist')) {
+                    $states = (new ReflectionClassConstant('action_plugin_tasklist', 'STATES'))->getValue();
+                }
+            } catch (Throwable $t) {
+                // on garde les statuts de base
+            }
+        }
+        return $states;
+    }
+
+    /** Case d'une tâche (lecture seule : un clic ne modifie pas la page d'origine) */
+    protected function taskBox(string $char): string
+    {
+        $states = $this->taskStates();
+        $c = $char === 'X' ? 'x' : $char;
+        [$cls, $glyph, $label] = $states[$c] ?? ['todo', '', ''];
+        return '<span class="tl-box tl-' . hsc($cls) . ' fmt-tbox" data-state="' . hsc($c) . '" title="' . hsc($label)
+            . '" role="img" aria-label="' . hsc($label) . '">' . $glyph . '</span>';
+    }
+
+    /** Texte d'une tâche : liens [[page|texte]] et [texte](adresse), **gras**, `code`, #tags */
+    protected function inline(string $t): string
+    {
+        $s = hsc($t);
+        $page = static function (string $target): string {
+            $target = html_entity_decode($target, ENT_QUOTES);
+            return wl(cleanID(preg_replace('/\.(?:md|txt)$/i', '', $target)));
+        };
+        $s = preg_replace_callback('/\[\[([^\]|]+)(?:\|([^\]]*))?\]\]/u', static function ($m) use ($page) {
+            $label = ($m[2] ?? '') !== '' ? $m[2] : $m[1];
+            return '<a href="' . hsc($page($m[1])) . '">' . $label . '</a>';
+        }, $s);
+        $s = preg_replace_callback('/\[([^\]]+)\]\(([^)\s]+)\)/u', static function ($m) use ($page) {
+            $url = html_entity_decode($m[2], ENT_QUOTES);
+            if (preg_match('#^https?://#i', $url)) return '<a class="urlextern" href="' . hsc($url) . '">' . $m[1] . '</a>';
+            return '<a href="' . hsc($page($m[2])) . '">' . $m[1] . '</a>';
+        }, $s);
+        $s = preg_replace('/\*\*([^*]+)\*\*/u', '<strong>$1</strong>', $s);
+        $s = preg_replace('/`([^`]+)`/u', '<code>$1</code>', $s);
+        /** @var helper_plugin_fmeta $fm */
+        $fm = $this->loadHelper('fmeta');
+        return preg_replace_callback('/(?<![\p{L}\p{N}_&#\/="])#(\p{L}[\p{L}\p{N}_\/-]*)/u',
+            static fn($m) => $fm->tagLink($m[1]), $s);
+    }
+
+    /** HTML d'une valeur quelconque : texte, lien de page, liste (éléments séparés par des virgules), booléen */
+    protected function free($v): string
+    {
+        if ($v === null || $v === '' || $v === []) return '';
+        /** @var helper_plugin_fmtable $h */
+        $h = $this->loadHelper('fmtable');
+        if ($h->isLink($v)) return '<a href="' . hsc(wl($v['__link'])) . '">' . hsc((string)$v['text']) . '</a>';
+        if (is_array($v)) {
+            $parts = [];
+            foreach ($v as $x) {
+                $s = $this->free($x);
+                if ($s !== '') $parts[] = $s;
+            }
+            return implode(', ', $parts);
+        }
+        if (is_bool($v)) return $v ? '✓' : '✗';
+        if (is_float($v)) return hsc(rtrim(rtrim(number_format($v, 2, '.', ''), '0'), '.'));
+        return hsc((string)$v);
     }
 
     /** @return array{type:string,values:array} */
@@ -152,16 +336,17 @@ class syntax_plugin_fmtable extends SyntaxPlugin
         $isList = false;
         $any = false;
         foreach ($rows as $e) {
-            $raw = $h->value($e, $key);
+            $raw = $h->columnValue($e, $key);
             if ($raw === null || $raw === '' || $raw === []) continue;
-            foreach ((array)$raw as $v) {
+            foreach ($h->asList($raw) as $v) {
+                $v = $h->plain($v);
                 $any = true;
-                $l = mb_strtolower((string)$v);
+                $l = mb_strtolower($v);
                 if ($l !== 'true' && $l !== 'false') $allBool = false;
                 if (!is_numeric($v)) $allNum = false;
-                $seen[$l] ??= (string)$v;
+                $seen[$l] ??= $v;
             }
-            if (is_array($raw)) $isList = true;
+            if (is_array($raw) && !$h->isLink($raw)) $isList = true;
         }
         $type = !$any ? 'scalar' : ($allBool ? 'bool' : ($allNum && !$isList ? 'num' : ($isList ? 'list' : 'scalar')));
         $values = array_values($seen);
@@ -179,11 +364,12 @@ class syntax_plugin_fmtable extends SyntaxPlugin
     /** Valeurs normalisées (minuscules) d'une fiche pour un filtre */
     protected function filterValues(helper_plugin_fmtable $h, array $e, string $key): array
     {
-        $raw = $h->value($e, $key);
+        $raw = $h->columnValue($e, $key);
         if ($raw === null || $raw === '' || $raw === []) return [];
         $out = [];
-        foreach ((array)$raw as $v) {
-            if ((string)$v !== '') $out[] = mb_strtolower((string)$v);
+        foreach ($h->asList($raw) as $v) {
+            $v = $h->plain($v);
+            if ($v !== '') $out[] = mb_strtolower($v);
         }
         return array_values(array_unique($out));
     }
@@ -191,14 +377,19 @@ class syntax_plugin_fmtable extends SyntaxPlugin
     protected function sortKey($raw): string
     {
         if ($raw === null) return '';
-        if (is_array($raw)) $raw = implode(',', $raw);
+        /** @var helper_plugin_fmtable $h */
+        $h = $this->loadHelper('fmtable');
+        $raw = $h->plain($raw);
         if (is_numeric($raw)) return sprintf('%020.6f', (float)$raw);
-        return mb_strtolower((string)$raw);
+        return mb_strtolower($raw);
     }
 
     protected function cell(helper_plugin_fmeta $fm, array $e, string $key, $raw, bool $filterable): string
     {
         if ($raw === null || $raw === '' || $raw === []) return '';
+        /** @var helper_plugin_fmtable $h */
+        $h = $this->loadHelper('fmtable');
+        if ($h->isLink($raw)) return $this->free($raw);
         $k = strtolower($key);
         if ($k === 'status' || $k === 'statut') return $fm->badge($e);
         if ($k === 'tags') return implode(' ', array_map([$fm, 'tagLink'], (array)$raw));
@@ -212,6 +403,7 @@ class syntax_plugin_fmtable extends SyntaxPlugin
             }
             return implode(' ', $chips);
         }
+        if (is_float($raw)) $raw = rtrim(rtrim(number_format($raw, 2, '.', ''), '0'), '.');
         $l = strtolower((string)$raw);
         if ($l === 'true' || $l === 'false') {
             return '<span class="fmt-bool fmt-' . $l . '"' . ($filterable
